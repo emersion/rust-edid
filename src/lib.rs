@@ -2,29 +2,39 @@
 extern crate nom;
 
 use std::str;
-use nom::{le_u8, le_u16, le_u32};
+use nom::{be_u16, le_u8, le_u16, le_u32};
 
 #[derive(Debug)]
 struct Header {
-	vendor: u16,
+	vendor: [char; 3],
 	product: u16,
 	serial: u32,
 	week: u8,
-	year: u8,
+	year: u8, // Starting at year 1990
 	version: u8,
 	revision: u8,
 }
 
+fn parse_vendor(v: u16) -> [char; 3] {
+	let mask: u8 = 0x1F; // Each letter is 5 bits
+	let i0 = ('A' as u8) - 1; // 0x01 = A
+	return [
+		(((v >> 10) as u8 & mask) + i0) as char,
+		(((v >> 5) as u8 & mask) + i0) as char,
+		(((v >> 0) as u8 & mask) + i0) as char,
+	]
+}
+
 named!(header<&[u8], Header>, do_parse!(
 	tag!(&[0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00][..])
-	>> vendor: le_u16
+	>> vendor: be_u16
 	>> product: le_u16
 	>> serial: le_u32
 	>> week: le_u8
 	>> year: le_u8
 	>> version: le_u8
 	>> revision: le_u8
-	>> (Header{vendor, product, serial, week, year, version, revision})
+	>> (Header{vendor: parse_vendor(vendor), product, serial, week, year, version, revision})
 ));
 
 #[derive(Debug)]
@@ -64,9 +74,9 @@ named!(descriptor_text<&[u8], &str>, map!(map_res!(take!(13), str::from_utf8), |
 enum Descriptor {
 	DetailedTiming, // TODO
 	SerialNumber(String),
-	UnspecifiedText, // TODO
+	UnspecifiedText(String),
 	RangeLimits, // TODO
-	Name, // TODO
+	Name(String),
 	WhitePoint, // TODO
 	StandardTiming, // TODO
 	Unknown,
@@ -78,9 +88,9 @@ named!(descriptor<&[u8], Descriptor>,
 			take!(1)
 			>> d: switch!(le_u8,
 				0xFF => do_parse!(take!(1) >> s: descriptor_text >> (Descriptor::SerialNumber(s.to_string()))) |
-				0xFE => do_parse!(take!(1) >> take!(13) >> (Descriptor::UnspecifiedText)) |
+				0xFE => do_parse!(take!(1) >> s: descriptor_text >> (Descriptor::UnspecifiedText(s.to_string()))) |
 				0xFD => do_parse!(take!(1) >> take!(13) >> (Descriptor::RangeLimits)) |
-				0xFC => do_parse!(take!(1) >> take!(13) >> (Descriptor::Name)) |
+				0xFC => do_parse!(take!(1) >> s: descriptor_text >> (Descriptor::Name(s.to_string()))) |
 				0xFB => do_parse!(take!(1) >> take!(13) >> (Descriptor::WhitePoint)) |
 				0xFA => do_parse!(take!(1) >> take!(13) >> (Descriptor::StandardTiming)) |
 				_ => do_parse!(take!(1) >> take!(13) >> (Descriptor::Unknown))
