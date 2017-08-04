@@ -6,13 +6,13 @@ use nom::{be_u16, le_u8, le_u16, le_u32};
 
 #[derive(Debug, PartialEq)]
 pub struct Header {
-	vendor: [char; 3],
-	product: u16,
-	serial: u32,
-	week: u8,
-	year: u8, // Starting at year 1990
-	version: u8,
-	revision: u8,
+	pub vendor: [char; 3],
+	pub product: u16,
+	pub serial: u32,
+	pub week: u8,
+	pub year: u8, // Starting at year 1990
+	pub version: u8,
+	pub revision: u8,
 }
 
 fn parse_vendor(v: u16) -> [char; 3] {
@@ -39,11 +39,11 @@ named!(parse_header<&[u8], Header>, do_parse!(
 
 #[derive(Debug, PartialEq)]
 pub struct Display {
-	video_input: u8,
-	width: u8, // cm
-	height: u8, // cm
-	gamma: u8, // datavalue = (gamma*100)-100 (range 1.00–3.54)
-	features: u8,
+	pub video_input: u8,
+	pub width: u8, // cm
+	pub height: u8, // cm
+	pub gamma: u8, // datavalue = (gamma*100)-100 (range 1.00–3.54)
+	pub features: u8,
 }
 
 named!(parse_display<&[u8], Display>, do_parse!(
@@ -131,12 +131,12 @@ named!(parse_descriptor<&[u8], Descriptor>,
 
 #[derive(Debug, PartialEq)]
 pub struct EDID {
-	header: Header,
-	display: Display,
+	pub header: Header,
+	pub display: Display,
 	chromaticity: (), // TODO
 	established_timing: (), // TODO
 	standard_timing: (), // TODO
-	descriptors: Vec<Descriptor>,
+	pub descriptors: Vec<Descriptor>,
 }
 
 named!(parse_edid<&[u8], EDID>, do_parse!(
