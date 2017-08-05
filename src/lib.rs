@@ -1,8 +1,9 @@
 #[macro_use]
 extern crate nom;
 
-use std::str;
 use nom::{be_u16, le_u8, le_u16, le_u32};
+
+mod cp437;
 
 #[derive(Debug, PartialEq)]
 pub struct Header {
@@ -67,8 +68,17 @@ named!(parse_standard_timing<&[u8], ()>, do_parse!(
 	take!(16) >> ()
 ));
 
-// TODO: code page 437 (https://en.wikipedia.org/wiki/Code_page_437)
-named!(parse_descriptor_text<&[u8], &str>, map!(map_res!(take!(13), str::from_utf8), |s| s.trim()));
+named!(parse_descriptor_text<&[u8], String>,
+	map!(
+		map!(take!(13), |b| {
+			b.iter()
+			.filter(|c| **c != 0x0A)
+			.map(|b| cp437::forward(*b))
+			.collect::<String>()
+		}),
+		|s| s.trim().to_string()
+	)
+);
 
 #[derive(Debug, PartialEq)]
 pub enum Descriptor {
@@ -76,9 +86,13 @@ pub enum Descriptor {
 	SerialNumber(String),
 	UnspecifiedText(String),
 	RangeLimits, // TODO
-	Name(String),
+	ProductName(String),
 	WhitePoint, // TODO
 	StandardTiming, // TODO
+	ColorManagement,
+	TimingCodes,
+	EstablishedTimings,
+	Dummy,
 	Unknown([u8; 13]),
 }
 
@@ -90,12 +104,12 @@ named!(parse_descriptor<&[u8], Descriptor>,
 				0xFF => do_parse!(
 					take!(1)
 					>> s: parse_descriptor_text
-					>> (Descriptor::SerialNumber(s.to_string()))
+					>> (Descriptor::SerialNumber(s))
 				) |
 				0xFE => do_parse!(
 					take!(1)
 					>> s: parse_descriptor_text
-					>> (Descriptor::UnspecifiedText(s.to_string()))
+					>> (Descriptor::UnspecifiedText(s))
 				) |
 				0xFD => do_parse!(
 					take!(1)
@@ -105,7 +119,7 @@ named!(parse_descriptor<&[u8], Descriptor>,
 				0xFC => do_parse!(
 					take!(1)
 					>> s: parse_descriptor_text
-					>> (Descriptor::Name(s.to_string()))
+					>> (Descriptor::ProductName(s))
 				) |
 				0xFB => do_parse!(
 					take!(1)
@@ -117,10 +131,30 @@ named!(parse_descriptor<&[u8], Descriptor>,
 					>> take!(13)
 					>> (Descriptor::StandardTiming)
 				) |
+				0xF9 => do_parse!(
+					take!(1)
+					>> take!(13)
+					>> (Descriptor::ColorManagement)
+				) |
+				0xF8 => do_parse!(
+					take!(1)
+					>> take!(13)
+					>> (Descriptor::TimingCodes)
+				) |
+				0xF7 => do_parse!(
+					take!(1)
+					>> take!(13)
+					>> (Descriptor::EstablishedTimings)
+				) |
+				0x10 => do_parse!(
+					take!(1)
+					>> take!(13)
+					>> (Descriptor::Dummy)
+				) |
 				_ => do_parse!(
-					take!(1) >>
-					data: count_fixed!(u8, le_u8, 13) >>
-					(Descriptor::Unknown(data))
+					take!(1)
+					>> data: count_fixed!(u8, le_u8, 13)
+					>> (Descriptor::Unknown(data))
 				)
 			)
 			>> (d)
@@ -160,9 +194,18 @@ mod tests {
 	use super::*;
 
 	fn test(d: &[u8], expected: &EDID) {
-		let (remaining, parsed) = parse(d).unwrap();
-		assert_eq!(remaining.len(), 0);
-		assert_eq!(&parsed, expected);
+		match parse(d) {
+			nom::IResult::Done(remaining, parsed) => {
+				assert_eq!(remaining.len(), 0);
+				assert_eq!(&parsed, expected);
+			},
+			nom::IResult::Error(err) => {
+				panic!(format!("{}", err));
+			},
+			nom::IResult::Incomplete(_) => {
+				panic!("Incomplete");
+			},
+		}
 	}
 
 	#[test]
@@ -192,8 +235,43 @@ mod tests {
 			descriptors: vec!(
 				Descriptor::DetailedTiming,
 				Descriptor::RangeLimits,
-				Descriptor::Name("SyncMaster".to_string()),
+				Descriptor::ProductName("SyncMaster".to_string()),
 				Descriptor::SerialNumber("HS3P701105".to_string()),
+			),
+		};
+
+		test(d, &expected);
+	}
+
+	#[test]
+	fn test_card0_edp_1() {
+		let d = include_bytes!("../testdata/card0-eDP-1");
+
+		let expected = EDID{
+			header: Header{
+				vendor: ['S', 'H', 'P'],
+				product: 5193,
+				serial: 0,
+				week: 32,
+				year: 25,
+				version: 1,
+				revision: 4,
+			},
+			display: Display{
+				video_input: 165,
+				width: 29,
+				height: 17,
+				gamma: 120,
+				features: 14,
+			},
+			chromaticity: (),
+			established_timing: (),
+			standard_timing: (),
+			descriptors: vec!(
+				Descriptor::DetailedTiming,
+				Descriptor::Dummy,
+				Descriptor::UnspecifiedText("DJCP6ÇLQ133M1".to_string()),
+				Descriptor::Unknown([2, 65, 3, 40, 0, 18, 0, 0, 11, 1, 10, 32, 32]),
 			),
 		};
 
