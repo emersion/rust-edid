@@ -81,8 +81,75 @@ named!(parse_descriptor_text<&[u8], String>,
 );
 
 #[derive(Debug, PartialEq)]
+pub struct DetailedTiming {
+	/// Pixel clock in kHz.
+	pub pixel_clock: u32,
+	pub horizontal_active_pixels: u16,
+	pub horizontal_blanking_pixels: u16,
+	pub vertical_active_lines: u16,
+	pub vertical_blanking_lines: u16,
+	pub horizontal_front_porch: u16,
+	pub horizontal_sync_width: u16,
+	pub vertical_front_porch: u16,
+	pub vertical_sync_width: u16,
+	/// Horizontal size in millimeters
+	pub horizontal_size: u16,
+	/// Vertical size in millimeters
+	pub vertical_size: u16,
+	/// Border pixels on one side of screen (i.e. total number is twice this)
+	pub horizontal_border_pixels: u8,
+	/// Border pixels on one side of screen (i.e. total number is twice this)
+	pub vertical_border_pixels: u8,
+	pub features: u8, /* TODO add enums etc. */
+}
+
+named!(parse_detailed_timing<&[u8], DetailedTiming>, do_parse!(
+	pixel_clock_10khz: le_u16
+	>> horizontal_active_lo: le_u8
+	>> horizontal_blanking_lo: le_u8
+	>> horizontal_px_hi: le_u8
+	>> vertical_active_lo: le_u8
+	>> vertical_blanking_lo: le_u8
+	>> vertical_px_hi: le_u8
+	>> horizontal_front_porch_lo: le_u8
+	>> horizontal_sync_width_lo: le_u8
+	>> vertical_lo: le_u8
+	>> porch_sync_hi: le_u8
+	>> horizontal_size_lo: le_u8
+	>> vertical_size_lo: le_u8
+	>> size_hi: le_u8
+	>> horizontal_border: le_u8
+	>> vertical_border: le_u8
+	>> features: le_u8
+	>> (DetailedTiming {
+		pixel_clock: pixel_clock_10khz as u32 * 10,
+		horizontal_active_pixels: (horizontal_active_lo as u16) |
+		                          (((horizontal_px_hi >> 4) as u16) << 8),
+		horizontal_blanking_pixels: (horizontal_blanking_lo as u16) |
+		                            (((horizontal_px_hi & 0xf) as u16) << 8),
+		vertical_active_lines: (vertical_active_lo as u16) |
+		                       (((vertical_px_hi >> 4) as u16) << 8),
+		vertical_blanking_lines: (vertical_blanking_lo as u16) |
+		                         (((vertical_px_hi & 0xf) as u16) << 8),
+		horizontal_front_porch: (horizontal_front_porch_lo as u16) |
+		                        (((porch_sync_hi >> 6) as u16) << 8),
+		horizontal_sync_width: (horizontal_sync_width_lo as u16) |
+		                       ((((porch_sync_hi >> 4) & 0x3) as u16) << 8),
+		vertical_front_porch: ((vertical_lo >> 4) as u16) |
+		                      ((((porch_sync_hi >> 2) & 0x3) as u16) << 8),
+		vertical_sync_width: ((vertical_lo & 0xf) as u16) |
+		                     (((porch_sync_hi & 0x3) as u16) << 8),
+		horizontal_size: (horizontal_size_lo as u16) | (((size_hi >> 4) as u16) << 8),
+		vertical_size: (vertical_size_lo as u16) | (((size_hi & 0xf) as u16) << 8),
+		horizontal_border_pixels: horizontal_border,
+		vertical_border_pixels: vertical_border,
+		features: features
+	})
+));
+
+#[derive(Debug, PartialEq)]
 pub enum Descriptor {
-	DetailedTiming, // TODO
+	DetailedTiming(DetailedTiming),
 	SerialNumber(String),
 	UnspecifiedText(String),
 	RangeLimits, // TODO
@@ -97,9 +164,9 @@ pub enum Descriptor {
 }
 
 named!(parse_descriptor<&[u8], Descriptor>,
-	switch!(le_u16,
+	switch!(peek!(le_u16),
 		0 => do_parse!(
-			take!(1)
+			take!(3)
 			>> d: switch!(le_u8,
 				0xFF => do_parse!(
 					take!(1)
@@ -159,7 +226,10 @@ named!(parse_descriptor<&[u8], Descriptor>,
 			)
 			>> (d)
 		) |
-		_ => do_parse!(take!(16) >> (Descriptor::DetailedTiming))
+		_ => do_parse!(
+			d: parse_detailed_timing
+			>> (Descriptor::DetailedTiming(d))
+		)
 	)
 );
 
@@ -233,7 +303,22 @@ mod tests {
 			established_timing: (),
 			standard_timing: (),
 			descriptors: vec!(
-				Descriptor::DetailedTiming,
+				Descriptor::DetailedTiming(DetailedTiming {
+					pixel_clock: 146250,
+					horizontal_active_pixels: 1680,
+					horizontal_blanking_pixels: 560,
+					vertical_active_lines: 1050,
+					vertical_blanking_lines: 39,
+					horizontal_front_porch: 104,
+					horizontal_sync_width: 176,
+					vertical_front_porch: 3,
+					vertical_sync_width: 6,
+					horizontal_size: 474,
+					vertical_size: 296,
+					horizontal_border_pixels: 0,
+					vertical_border_pixels: 0,
+					features: 28
+				}),
 				Descriptor::RangeLimits,
 				Descriptor::ProductName("SyncMaster".to_string()),
 				Descriptor::SerialNumber("HS3P701105".to_string()),
@@ -268,7 +353,22 @@ mod tests {
 			established_timing: (),
 			standard_timing: (),
 			descriptors: vec!(
-				Descriptor::DetailedTiming,
+				Descriptor::DetailedTiming(DetailedTiming {
+					pixel_clock: 138500,
+					horizontal_active_pixels: 1920,
+					horizontal_blanking_pixels: 160,
+					vertical_active_lines: 1080,
+					vertical_blanking_lines: 31,
+					horizontal_front_porch: 48,
+					horizontal_sync_width: 32,
+					vertical_front_porch: 3,
+					vertical_sync_width: 5,
+					horizontal_size: 294,
+					vertical_size: 165,
+					horizontal_border_pixels: 0,
+					vertical_border_pixels: 0,
+					features: 24,
+				}),
 				Descriptor::Dummy,
 				Descriptor::UnspecifiedText("DJCP6ÇLQ133M1".to_string()),
 				Descriptor::Unknown([2, 65, 3, 40, 0, 18, 0, 0, 11, 1, 10, 32, 32]),
