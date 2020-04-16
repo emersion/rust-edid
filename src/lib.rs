@@ -5,7 +5,7 @@ use nom::{be_u16, le_u8, le_u16, le_u32};
 
 mod cp437;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Header {
 	pub vendor: [char; 3],
 	pub product: u16,
@@ -38,7 +38,7 @@ named!(parse_header<&[u8], Header>, do_parse!(
 	>> (Header{vendor: parse_vendor(vendor), product, serial, week, year, version, revision})
 ));
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Display {
 	pub video_input: u8,
 	pub width: u8, // cm
@@ -80,7 +80,7 @@ named!(parse_descriptor_text<&[u8], String>,
 	)
 );
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct DetailedTiming {
 	/// Pixel clock in kHz.
 	pub pixel_clock: u32,
@@ -147,7 +147,7 @@ named!(parse_detailed_timing<&[u8], DetailedTiming>, do_parse!(
 	})
 ));
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Descriptor {
 	DetailedTiming(DetailedTiming),
 	SerialNumber(String),
@@ -233,7 +233,7 @@ named!(parse_descriptor<&[u8], Descriptor>,
 	)
 );
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct EDID {
 	pub header: Header,
 	pub display: Display,
